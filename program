@@ -1,0 +1,135 @@
+import RPi.GPIO as GPIO
+import time
+
+# Define GPIO pins
+s2_1 = 14
+s3_1 = 15
+signal_1 = 18                                              
+led_pin1 = 16
+led_pin2 = 21
+ir1_out = 22
+ir2_out = 7 
+ir1_in = 12
+ir2_in = 25
+motor_relay1 = 23
+motor_relay2 = 24
+ir_sensor_pin = 24
+
+# Define constants
+NUM_CYCLES = 10
+IR_SENSOR_TIMEOUT = 50
+grade_a1_upper_limit = 35000
+grade_a1_lower_limit = 21000
+grade_b1_upper_limit = 20500
+grade_b1_lower_limit = 20000
+def setup():
+    GPIO.setwarnings(False)
+    GPIO.setmode(GPIO.BCM)
+
+    # Setup pins for first color sensor
+    GPIO.setup(signal_1, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+    GPIO.setup(s2_1, GPIO.OUT)
+    GPIO.setup(s3_1, GPIO.OUT)
+
+    # Setup LED pins
+    GPIO.setup(led_pin1, GPIO.OUT)
+    GPIO.setup(led_pin2, GPIO.OUT)
+
+    # Setup motor relay pins
+    GPIO.setup(motor_relay1, GPIO.OUT)
+    GPIO.setup(motor_relay2, GPIO.OUT)
+
+    # Setup IR sensor pin
+    GPIO.setup(ir_sensor_pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+    GPIO.setup(ir1_out, GPIO.IN)
+    GPIO.setup(ir2_out, GPIO.IN)
+    GPIO.setup(ir1_in, GPIO.OUT)
+    GPIO.setup(ir2_in, GPIO.OUT)
+
+
+
+def read_color(sensor):
+    GPIO.output(sensor['s2'], GPIO.LOW)
+    GPIO.output(sensor['s3'], GPIO.LOW)
+    time.sleep(0.03)
+    start = time.time()
+    for impulse_count in range(NUM_CYCLES):
+        GPIO.wait_for_edge(sensor['signal'], GPIO.FALLING)
+    duration = time.time() - start
+    color_frequency = NUM_CYCLES / duration
+
+    return color_frequency
+
+def loop():
+    ir_sensor_detected = False
+    last_ir_detection_time = time.time()
+    GPIO.output(motor_relay1, GPIO.LOW)
+    
+
+    while True:
+        if GPIO.input(ir_sensor_pin) == GPIO.LOW:
+            ir_sensor_detected = True
+            last_ir_detection_time = time.time()
+
+        if time.time() - last_ir_detection_time >= IR_SENSOR_TIMEOUT:
+            print("IR sensor not detected for {} seconds. Stopping program.".format(IR_SENSOR_TIMEOUT))
+            GPIO.output(motor_relay1, GPIO.HIGH)
+            GPIO.output(motor_relay2, GPIO.HIGH)
+            break
+
+        red_1 = read_color({'s2': s2_1, 's3': s3_1, 'signal': signal_1})
+        print("Red intensity (Sensor 1):", red_1)
+        if grade_a1_lower_limit <= red_1 <= grade_a1_upper_limit:
+            print("Grade A")
+            while True:
+                GPIO.output(ir1_in, GPIO.HIGH)
+            
+                if GPIO.input(ir1_out) == GPIO.LOW:  # Check if ir1_out is high
+                    
+                    GPIO.output(led_pin1, GPIO.LOW)    # Turn on led_pin1
+                    time.sleep(6)                      # Wait for 6 seconds
+                    GPIO.output(led_pin1, GPIO.HIGH)   # Turn off led_pin1
+                    GPIO.output(ir1_in, GPIO.LOW)
+                    break# Reset ir1_in to low
+            
+                
+    # Reset the input pin to low
+
+            
+
+        elif grade_b1_lower_limit <= red_1 <= grade_b1_upper_limit:
+            print("Grade B")
+            while True:
+                GPIO.output(ir2_in, GPIO.HIGH)
+                
+                if GPIO.input(ir2_out) == GPIO.LOW:  # Check if ir1_out is high
+                      
+                    GPIO.output(led_pin2, GPIO.LOW)    # Turn on led_pin1
+                    time.sleep(6)                      # Wait for 6 seconds
+                    GPIO.output(led_pin2, GPIO.HIGH)   # Turn off led_pin1
+                    GPIO.output(ir2_in, GPIO.LOW)
+                    break# Reset ir1_in to low
+            
+              # Turn off motor_relay2
+           
+
+        else:
+            print("No Grade")
+
+        time.sleep(0.7)
+
+    end_program()
+
+
+def end_program():
+    GPIO.cleanup()
+
+if __name__ == '__main__':
+    setup()
+
+    try:
+        loop()
+
+    except KeyboardInterrupt:
+        end_program()
+    
